@@ -3,10 +3,8 @@
 
 This is the implementation of the algorithm ClusterPBD published in Physical Review E
 
-Reference: Pujol, J.M., Béjar, J. and Delgado, J. "Clustering Algorithm for Determining Community Structure in Large Networks". 
-Physical Review E 74 (2007):016107
-
-[Paper](http://cscs.umich.edu/%7Ejmpujol/public/papers/spectralCluster.pdf)
+*Reference:* Pujol, J.M., Béjar, J. and Delgado, J. "Clustering Algorithm for Determining Community Structure in Large Networks". 
+Physical Review E 74 (2007):016107 [Paper](http://cscs.umich.edu/%7Ejmpujol/public/papers/spectralCluster.pdf)
 
 #Build from source
 
@@ -28,9 +26,16 @@ In data/ you can find several networks
 
 #Usage
 
-./clusterPBD data/zachary.net 0 2 0
+Several examples (fromt the networks in data/)
+
+    ./clusterPBD data/zachary.net 0 2 0
+    ./clusterPBD data/erdos02b.net 1 2 0
+    ./clusterPBD data/condmat.net 0 2 0
 
 ##Parameters
+
+You can get them from the binary if you execute it without parameters.
+
 
     ./clusterPBD filename type distance msave
 
@@ -39,7 +44,8 @@ In data/ you can find several networks
       distance (for the initial seed)
       msave {0,1} (don't save intermediate results: 0, save them: 1)
 
-##Output:
+
+##Output
 
 The executable will generate 4 output files (in the same directory thant the binary, it's hardcoded :/)
 
