@@ -317,7 +317,6 @@ int* matrixSeedMaxConn(int n, int* p) {
 
     (*p)=cont;
     free(hist);
-
     return res;
 
 }
@@ -327,7 +326,7 @@ int* load_initial_partition(char* filename, int* P) {
     FILE* file = fopen(filename,"r");
     char line[255];
     int id;
-    char* s;
+    char* s = NULL;
     int n = 0;
     int i = 0;
     int* res;
@@ -358,6 +357,7 @@ int* load_initial_partition(char* filename, int* P) {
 
     fclose(file);
 
+    free(s);
     (*P)=maxid+1;
     return res;
 
@@ -474,7 +474,6 @@ void load(char* filename) {
 
     for(i=0;i<n;i++) {
         conn[i]=punt[i];
-
     }
 
     int j2,k;
@@ -487,8 +486,8 @@ void load(char* filename) {
         }
     }
 
+    free(s);
     free(punt);
-
 
 }
 
@@ -648,36 +647,17 @@ void loadShort(char *filename) {
                                     //self[id1]=1;
                                 }
                             }
-
-
                         }
-
                         line2[0] = '\0';
-
                     }
-
                 }
                 else final = 1;
-
                 i++;
-
             }
 
-
-
             line2[0] = '\0';
-
-
-
-
-        cont++;
-
-
-
+            cont++;
         }
-
-
-
    }
 
     for(i=0;i<n;i++) {
@@ -695,7 +675,7 @@ void loadShort(char *filename) {
         }
     }
 
-
+    free(s);
     free(punt);
 
     fclose(file);
@@ -822,6 +802,7 @@ int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* su
     double* col = (double *)calloc(n,sizeof(double));
     double* col2 = (double *)calloc(n,sizeof(double));
     double* tmpcol;
+    double* cache_ratio_max_w_sum_w = (double *)malloc(sizeof(double)*n);
 
     int listp;
     double vv;
@@ -829,6 +810,11 @@ int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* su
     int iter;
     int done;
     int i, j, k, k2;
+
+    for(i=0;i<n;i++) {
+        cache_ratio_max_w_sum_w[i] = (max_weights[i]/sum_weights[i]);
+    }
+
 
     for(i=from;i<to;i++) {
 
@@ -851,7 +837,8 @@ int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* su
 
             for(k=0;k<listp;k++) {
                 j=list[k];
-                vv = col[j]*(max_weights[j]/sum_weights[j]);
+                //vv = col[j]*(max_weights[j]/sum_weights[j]);
+                vv = col[j]*cache_ratio_max_w_sum_w[j];
                 col2[j] += vv;
                 for(k2=0;k2<conn[j];k2++) {
                     if (cache[graph[j][k2]]==0)  {
@@ -861,7 +848,10 @@ int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* su
                     }
 
                     //vv = col[j]*(conninv_weight[graph[j][k2]]/(double)conn[graph[j][k2]]);
-                    vv = col[j]*(graph_weight[j][k2]/sum_weights[j]);
+                    //vv = col[j]*(graph_weight[j][k2]/sum_weights[j]);
+                    //already normalized by the sum_weights
+                    vv = col[j]*(graph_weight[j][k2]);
+
                     col2[graph[j][k2]] += vv;
                 }
             }
@@ -897,6 +887,7 @@ int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* su
     free(list);
     free(col);
     free(col2);
+    free(cache_ratio_max_w_sum_w);
 
     return 0;
 
@@ -920,7 +911,6 @@ void* mult_thread_wrapper(void *data) {
     mult_thread(p->n, p->from, p->to, p->seeds, p->conninv, p->sum_weights, p->max_weights, p->val, p->tmp_class);
     return 0;
 }
-
 
 
 int* mult_all_3(int n, int* seeds, int* pp) {
@@ -955,7 +945,14 @@ int* mult_all_3(int n, int* seeds, int* pp) {
         conninv[i] = 1.0/(1.0+(double)conn[i]);
         sum_weights[i] = sumw + maxw;
         max_weights[i] = maxw;
+
+        for(j=0;j<conn[i];j++) {
+            graph_weight[i][j] = graph_weight[i][j] / sumw;
+        }
+
     }
+
+
 
     int num_threads = mNumThreads;
 
@@ -1059,7 +1056,6 @@ int build(int* class, int n, int p) {
 
     int* classtemp=NULL;
     int* classmax=NULL;
-    int* classmax_temp=NULL;
     double qqmax=-1.0;
     int maxp=-1;
     int c1;
@@ -1089,7 +1085,6 @@ int build(int* class, int n, int p) {
         }
     }
 
-    classmax_temp = (int *)malloc(sizeof(int)*n);
     classtemp = (int *)malloc(sizeof(int)*n);
     classmax = (int *)malloc(sizeof(int)*n);
     for(i=0;i<n;i++) classtemp[i]=class[i];
@@ -1108,9 +1103,7 @@ int build(int* class, int n, int p) {
             c2=class[graph[i][j]];
 
             if (c1==c2) inlinks[c1]++;
-
             outlinks[c1]++;
-
             numlinks++;
         }
     }
@@ -1122,7 +1115,6 @@ int build(int* class, int n, int p) {
         vm[i] = (((double)inlinks[i]/(double)numlinks) - pow((double)outlinks[i]/(double)numlinks,2.0));
         qq=qq+vm[i];
     }
-
 
     fprintf(fdmod,"%f\n",qq);
 
