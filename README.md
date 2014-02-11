@@ -10,7 +10,7 @@ Physical Review E 74 (2007):016107 [Paper](http://cscs.umich.edu/%7Ejmpujol/publ
 
 The source code is self-contained, no external dependencies. You can build the binary using gcc:
 
-    gcc -O2 -Wall -o clusterPBD clusterPBD.c -lm
+    gcc -O2 -Wall -o clusterPBD clusterPBD.c -lm -lpthread
 
 This will create the executable clusterPBD
 
@@ -28,9 +28,9 @@ In data/ you can find several networks
 
 Several examples (fromt the networks in data/)
 
-    ./clusterPBD data/zachary.net 0 2 0
-    ./clusterPBD data/erdos02b.net 1 2 0
-    ./clusterPBD data/condmat.net 0 2 0
+    ./clusterPBD data/zachary.net 0 2 0 2
+    ./clusterPBD data/erdos02b.net 0 2 0 2
+    ./clusterPBD data/condmat.net 0 2 0 2
 
 ##Parameters
 
@@ -43,7 +43,7 @@ You can get them from the binary if you execute it without parameters.
       type {0,1} (pajek format: 0, pajek compact format: 1)
       distance (for the initial seed)
       msave {0,1} (don't save intermediate results: 0, save them: 1)
-
+      num_cores number of threads, one per core recommended
 
 ##Output
 

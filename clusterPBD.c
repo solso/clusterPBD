@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <sys/timeb.h>
+#include <pthread.h>
 
 int** graph;
 double** graph_weight;
@@ -16,6 +17,7 @@ int graphE;
 int P;
 int D;
 int mSave;
+int mNumThreads;
 
 int* partitions_to_save_v;
 int partitions_to_save;
@@ -813,51 +815,23 @@ int homegen(int *vect, int n) {
 }
 
 
-
-int* mult_all_3(int n, int* seeds, int* pp) {
-
-    int* class = (int *)malloc(sizeof(int)*n);
-    double* val = (double *)malloc(sizeof(double)*n);
-    int done;
-    int i,j,k,k2;
-    double* col2 = (double *)calloc(n,sizeof(double));
-    double* col = (double *)calloc(n,sizeof(double));
-    int iter = 0;
-    int p = (*pp);
-
-    int maxiter=0;
-    double* tmpcol;
-    double* conninv = (double *)malloc(sizeof(double)*n);
-    double* sum_weights = (double *)malloc(sizeof(double)*n);
-    double* max_weights = (double *)malloc(sizeof(double)*n);
-
-    double vv;
-    double sumw;
-    double maxw;
-
-    for(i=0;i<n;i++) {
-        class[i]=-1;
-        val[i]=0.0;
-        sumw = 0.0;
-        maxw = 0.0;
-        for(j=0;j<conn[i];j++) {
-            sumw += graph_weight[i][j];
-            if (maxw < graph_weight[i][j]) {
-                maxw = graph_weight[i][j];
-            }
-        }
-        conninv[i] = 1.0/(1.0+(double)conn[i]);
-        sum_weights[i] = sumw + maxw;
-        max_weights[i] = maxw;
-    }
+int mult_thread(int n, int from, int to, int* seeds, double* conninv, double* sum_weights, double* max_weights, double* val, int* tmp_class) {
 
     int* cache = (int *)malloc(sizeof(int)*n);
     int* list = (int *)malloc(sizeof(int)*n);
+    double* col = (double *)calloc(n,sizeof(double));
+    double* col2 = (double *)calloc(n,sizeof(double));
+    double* tmpcol;
+
     int listp;
+    double vv;
 
+    int iter;
+    int done;
+    int i, j, k, k2;
 
-    for(i=0;i<p;i++) {
-        if ((i%1000)==0) printf("Spectral phase %d of %d\n",i,p);
+    for(i=from;i<to;i++) {
+
         iter=0;
         done=0;
 
@@ -875,10 +849,8 @@ int* mult_all_3(int n, int* seeds, int* pp) {
 
             for(j=0;j<n;j++) col2[j]=0.0;
 
-            int ll = listp;
-            for(k=0;k<ll;k++) {
+            for(k=0;k<listp;k++) {
                 j=list[k];
-                //vv = col[j]*conninv[j];
                 vv = col[j]*(max_weights[j]/sum_weights[j]);
                 col2[j] += vv;
                 for(k2=0;k2<conn[j];k2++) {
@@ -903,19 +875,158 @@ int* mult_all_3(int n, int* seeds, int* pp) {
         }
 
 
-
-        if (iter>maxiter) maxiter=iter;
-
         for(k=0;k<listp;k++) {
             j=list[k];
             //printf("%d %d %f\n",i,j,col[j]);
             if (col[j]>val[j]) {
                 val[j]=col[j];
-                class[j]=i;
+                tmp_class[j]=i;
             }
         }
 
     }
+
+    //for(i=0;i<n;i++) {
+    //    printf("%d %d %f\n",i,tmp_class[i],val[i]);
+    //}
+    //printf("///////\n");
+
+    // ---
+
+    free(cache);
+    free(list);
+    free(col);
+    free(col2);
+
+    return 0;
+
+}
+
+struct mult_thread_params {
+    int n;
+    int from;
+    int to;
+    int* seeds;
+    double* conninv;
+    double* sum_weights;
+    double* max_weights;
+    double* val;
+    int* tmp_class;
+};
+
+void* mult_thread_wrapper(void *data) {
+
+    struct mult_thread_params* p = (struct mult_thread_params *)data;
+    mult_thread(p->n, p->from, p->to, p->seeds, p->conninv, p->sum_weights, p->max_weights, p->val, p->tmp_class);
+    return 0;
+}
+
+
+
+int* mult_all_3(int n, int* seeds, int* pp) {
+
+    int* class = (int *)malloc(sizeof(int)*n);
+    int i,j;
+    int p = (*pp);
+
+    double* conninv = (double *)malloc(sizeof(double)*n);
+    double* sum_weights = (double *)malloc(sizeof(double)*n);
+    double* max_weights = (double *)malloc(sizeof(double)*n);
+
+    double** val;
+    int** tmp_class;
+
+    double sumw;
+    double maxw;
+    double tmp_val;
+    int step;
+    int base;
+
+    for(i=0;i<n;i++) {
+        class[i]=-1;
+        sumw = 0.0;
+        maxw = 0.0;
+        for(j=0;j<conn[i];j++) {
+            sumw += graph_weight[i][j];
+            if (maxw < graph_weight[i][j]) {
+                maxw = graph_weight[i][j];
+            }
+        }
+        conninv[i] = 1.0/(1.0+(double)conn[i]);
+        sum_weights[i] = sumw + maxw;
+        max_weights[i] = maxw;
+    }
+
+    int num_threads = mNumThreads;
+
+    val = (double**)malloc(sizeof(double*)*num_threads);
+    tmp_class = (int**)malloc(sizeof(int*)*num_threads);
+    for(i=0;i<num_threads;i++) {
+        val[i] = (double *)calloc(n,sizeof(double));
+        tmp_class[i] = (int *)calloc(n,sizeof(int));
+        for(j=0;j<n;j++) {
+            val[i][j] = 0.0;
+            tmp_class[i][j] = -1;
+        }
+    }
+
+    pthread_t* thread_pool = (pthread_t*)malloc(sizeof(pthread_t)*num_threads);
+    struct mult_thread_params** thread_pool_params = (struct mult_thread_params**)malloc(sizeof(struct mult_thread_params*)*num_threads);
+    struct mult_thread_params* tp;
+
+    step = p / num_threads;
+    base = 0;
+
+    for(i=0;i<num_threads;i++) {
+
+        thread_pool_params[i] = (struct mult_thread_params*)malloc(sizeof(struct mult_thread_params));
+        tp = thread_pool_params[i];
+
+        tp->n = n;
+        tp->from = base;
+        if (i==num_threads-1) tp->to = p;
+        else tp->to = base + step;
+        tp->seeds = seeds;
+        tp->conninv = conninv;
+        tp->sum_weights = sum_weights;
+        tp->max_weights = max_weights;
+        tp->val = val[i];
+        tp->tmp_class = tmp_class[i];
+
+        if (pthread_create(&thread_pool[i], NULL, mult_thread_wrapper, tp)) {
+            printf("Error creating thread!\n");
+            exit(-1);
+        }
+
+        base += step;
+        //the case of no-threads
+        //mult_thread(n,0,p,seeds,conninv,sum_weights,max_weights,val[i],tmp_class[i]);
+    }
+
+    for(i=0;i<num_threads;i++) {
+        pthread_join(thread_pool[i], NULL);
+    }
+
+    printf("All threads finished!\n");
+
+    for(i=0;i<n;i++) {
+        tmp_val = 0.0;
+        for(j=0;j<num_threads;j++) {
+            if (val[j][i] > tmp_val) {
+                tmp_val = val[j][i];
+                class[i] = tmp_class[j][i];
+            }
+        }
+    }
+
+
+    for(i=0;i<num_threads;i++) {
+        free(tmp_class[i]);
+        free(val[i]);
+        free(thread_pool_params[i]);
+    }
+    free(tmp_class);
+    free(val);
 
 
     for(i=0;i<n;i++) {
@@ -925,15 +1036,9 @@ int* mult_all_3(int n, int* seeds, int* pp) {
         }
     }
 
-
-    free(cache);
-    free(val);
-    free(col);
-    free(col2);
     free(conninv);
     free(sum_weights);
     free(max_weights);
-    free(list);
 
     return class;
 
@@ -1085,7 +1190,7 @@ int build(int* class, int n, int p) {
     int* list = (int *)malloc(sizeof(int)*n);
     int listp;
 
-  pos1=-1;
+    pos1=-1;
     for(j=0;j<n;j++) {
         c2 = classtemp[j];
         if (c2!=pos1) {
@@ -1194,14 +1299,9 @@ int build(int* class, int n, int p) {
             if (classtemp[j]==pos2) totpos2++;
         }
 
-        //if (totpos1>totpos2) {
-            joins[joinscont][0]=totpos1;
-            joins[joinscont][1]=totpos2;
-        //}
-        //else {
-        //	joins[joinscont][0]=totpos2;
-        //	joins[joinscont][1]=totpos1;
-        //}
+        joins[joinscont][0]=totpos1;
+        joins[joinscont][1]=totpos2;
+
         joinscont++;
 
         for(j=0;j<n;j++) {
@@ -1212,11 +1312,11 @@ int build(int* class, int n, int p) {
 
         Z[contz][0]=labZ[pos2];
         Z[contz][1]=labZ[pos1];
-    Z[contz][2]=contzz;
-    labZ[pos1]=contz+graphN;
-    labZ[pos2]=contz+graphN;
-    contz=contz+1;
-    contzz=contzz+0.05;
+        Z[contz][2]=contzz;
+        labZ[pos1]=contz+graphN;
+        labZ[pos2]=contz+graphN;
+        contz=contz+1;
+        contzz=contzz+0.05;
 
         tempqq = qq - (vm[pos1]+vm[pos2]);
 
@@ -1270,10 +1370,6 @@ int build(int* class, int n, int p) {
         outlinks[pos1]=outlinks[pos1]+outlinks[pos2];
         outlinks[pos2]=0;
 
-
-        //free(arv);
-
-
     }
 
     free(arv);
@@ -1302,7 +1398,6 @@ int build(int* class, int n, int p) {
     for(i=0;i<maxp-1;i++) {
         fprintf(fdjoin,"%d %d\n",joins[i][0],joins[i][1]);
     }
-
 
 
     free(inlinks);
@@ -1339,16 +1434,17 @@ int main(int argc, char* argv[]) {
     int* class;
 
 
-    if (argc!=5) {
-        printf("\nUsage:\n\n./clusterPBD filename type distance msave\n\n");
+    if (argc!=6) {
+        printf("\nUsage:\n\n./clusterPBD filename type distance msave num_cores\n\n");
         printf("   filename (network in pajek format)\n");
         printf("   type {0,1} (pajek format: 0, pajek compact format: 1)\n");
         printf("   distance (for the initial seed)\n");
         printf("   msave {0,1} (don't save intermediate results: 0, save them: 1)\n");
+        printf("   num_cores number of threads, one per core recommended\n");
         printf("\n");
         printf("Examples:\n\n");
-        printf("   ./clusterPBD data/zachary.net 0 2 0\n");
-        printf("   ./clusterPBD data/erdos02b.net 1 2 0\n");
+        printf("   ./clusterPBD data/zachary.net 0 2 0 4\n");
+        printf("   ./clusterPBD data/erdos02b.net 1 2 0 4\n");
         printf("\n");
         exit(-1);
     }
@@ -1357,6 +1453,8 @@ int main(int argc, char* argv[]) {
     D = atoi(argv[3]);
 
     mSave = atoi(argv[4]);
+    mNumThreads = atoi(argv[5]);
+
 
     if (type==0) load(argv[1]);
     else loadShort(argv[1]);
