@@ -10,7 +10,7 @@ Physical Review E 74 (2007):016107 [Paper](http://cscs.umich.edu/%7Ejmpujol/publ
 
 The source code is self-contained, no external dependencies. You can build the binary using gcc:
 
-    gcc -O2 -Wall -lm -o clusterPBD clusterPBD.c
+    gcc -O2 -Wall -o clusterPBD clusterPBD.c -lm
 
 This will create the executable clusterPBD
 
